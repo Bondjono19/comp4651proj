@@ -21,3 +21,15 @@ Return example:
 {
     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImV4cCI6MTc2Mjc5NDA5Mn0.VvLxT72zrL8PKQb0RnW6kxD09XwjG-zGXeaF8y9mJuo"
 }
+### /generate_db
+Generates the following dummy users in db with (username,password):  
+("alice", "pass123"),  
+("bob", "qwerty"),  
+("charlie", "hello123"),  
+("dave", "abc123"),  
+("emma", "secret1"),  
+("frank", "test123"),  
+("grace", "password1"),  
+("henry", "letmein"),  
+("isabella", "monkey1"),  
+("jack", "simple123")  
