@@ -1,0 +1,10 @@
+.message-list {
+  overflow: auto;
+  padding: 8px;
+  flex: 1;
+  text-align: left;
+  padding-bottom: 96px; /* space for the fixed input */
+}
+.message-item { margin-bottom: 8px }
+.message-meta { font-size: 12px; color: #666 }
+.message-content { font-size: 15px }
