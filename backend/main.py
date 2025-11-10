@@ -1,192 +1,153 @@
+import asyncio
+import os  
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 import logging
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Chat WebSocket Microservice", version="1.0.0")
+app = FastAPI(title="Chat WebSocket Microservice")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Data Models
-class User:
-    def __init__(self, username: str, client_id: str, room_id: str):
-        self.username = username
-        self.client_id = client_id
-        self.room_id = room_id
-        self.joined_at = datetime.now()
-
-class Room:
-    def __init__(self, room_id: str):
-        self.room_id = room_id
-        self.messages: List[dict] = []
-        self.created_at = datetime.now()
-        self.max_messages = 100  # Keep last 100 messages
+ROOMS = ["general", "python", "devops", "random"]
 
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
-        self.rooms: Dict[str, Room] = {}
-        self.users: Dict[str, User] = {}
-        
+        self.rooms: Dict[str, List[dict]] = {}
+        self.user_rooms: Dict[str, str] = {}
+        self.usernames: Dict[str, str] = {}
+    
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
         self.active_connections[client_id] = websocket
         logger.info(f"Client {client_id} connected")
-        
-    async def disconnect(self, client_id: str):
-        user = self.users.get(client_id)
-        if user:
-            await self._leave_room(client_id, user.room_id)
-            del self.users[client_id]
-            
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
-            
-        logger.info(f"Client {client_id} disconnected")
     
-    async def join_room(self, client_id: str, room_id: str, username: str):
-        # Create room if it doesn't exist
+    def disconnect(self, client_id: str):
+        if client_id in self.active_connections:
+            room_id = self.user_rooms.get(client_id)
+            username = self.usernames.get(client_id)
+            
+            if room_id and username:
+                leave_message = {
+                    "id": str(uuid.uuid4()),
+                    "username": "System",
+                    "content": f"{username} left the chat",
+                    "timestamp": int(datetime.now().timestamp() * 1000)
+                }
+                # FIX: Add await
+                asyncio.create_task(self._broadcast_to_room(room_id, leave_message))
+                
+            # Clean up user data
+            if client_id in self.user_rooms:
+                del self.user_rooms[client_id]
+            if client_id in self.usernames:
+                del self.usernames[client_id]
+            
+            del self.active_connections[client_id]
+            logger.info(f"Client {client_id} disconnected")
+    
+    async def handle_join_room(self, client_id: str, data: dict):
+        room_id = data.get("roomId", "general")
+        username = data.get("username", f"User_{client_id}")
+        
+        self.user_rooms[client_id] = room_id
+        self.usernames[client_id] = username
+        
         if room_id not in self.rooms:
-            self.rooms[room_id] = Room(room_id)
-            logger.info(f"Created new room: {room_id}")
+            self.rooms[room_id] = []
         
-        # Leave previous room if any
-        old_user = self.users.get(client_id)
-        if old_user and old_user.room_id != room_id:
-            await self._leave_room(client_id, old_user.room_id)
-        
-        # Join new room
-        self.users[client_id] = User(username, client_id, room_id)
-        
-        # Send room history to the new user
-        room = self.rooms[room_id]
-        await self._send_to_client(client_id, {
-            "event": "room_history",
-            "data": {
-                "messages": room.messages[-50:],  # Last 50 messages
-                "room_id": room_id
+        # Send welcome and history
+        if client_id in self.active_connections:
+            welcome_message = {
+                "id": str(uuid.uuid4()),
+                "username": "System",
+                "content": f"Welcome to room '{room_id}'",
+                "timestamp": int(datetime.now().timestamp() * 1000)
             }
-        })
+            await self.active_connections[client_id].send_json(welcome_message)
+            
+            # Send room history
+            for message in self.rooms[room_id][-50:]:
+                await self.active_connections[client_id].send_json(message)
         
-        # Notify room about new user
-        user_list = await self._get_room_users(room_id)
-        await self._broadcast_to_room(room_id, {
-            "event": "user_joined",
-            "data": {
-                "username": username,
-                "message": f"{username} joined the room",
-                "timestamp": datetime.now().isoformat(),
-                "users": user_list,
-                "room_id": room_id
-            }
-        })
+        # Notify others
+        join_message = {
+            "id": str(uuid.uuid4()),
+            "username": "System",
+            "content": f"{username} joined the chat",
+            "timestamp": int(datetime.now().timestamp() * 1000)
+        }
+        await self._broadcast_to_room(room_id, join_message, exclude_client=client_id)
         
         logger.info(f"User {username} joined room {room_id}")
     
-    async def send_message(self, client_id: str, message_text: str):
-        user = self.users.get(client_id)
-        if not user:
-            await self._send_to_client(client_id, {
-                "event": "error",
-                "data": {"message": "You must join a room first"}
-            })
+    async def handle_send_message(self, client_id: str, data: dict):
+        room_id = self.user_rooms.get(client_id)
+        username = self.usernames.get(client_id)
+        
+        if not room_id or not username:
+            error_message = {
+                "id": str(uuid.uuid4()),
+                "username": "System",
+                "content": "Please join a room first",
+                "timestamp": int(datetime.now().timestamp() * 1000)
+            }
+            if client_id in self.active_connections:
+                await self.active_connections[client_id].send_json(error_message)
             return
         
-        room_id = user.room_id
-        room = self.rooms.get(room_id)
-        
-        if not room:
-            await self._send_to_client(client_id, {
-                "event": "error", 
-                "data": {"message": "Room not found"}
-            })
-            return
-        
-        # Create message object
-        message_data = {
+        message = {
             "id": str(uuid.uuid4()),
-            "username": user.username,
-            "message": message_text,
-            "timestamp": datetime.now().isoformat(),
-            "room_id": room_id
+            "username": username,
+            "content": data.get("content", ""),
+            "timestamp": int(datetime.now().timestamp() * 1000)
         }
         
-        # Store message
-        room.messages.append(message_data)
-        # Keep only recent messages
-        if len(room.messages) > room.max_messages:
-            room.messages = room.messages[-room.max_messages:]
+        self.rooms[room_id].append(message)
+        self.rooms[room_id] = self.rooms[room_id][-100:]
         
-        # Broadcast to room
-        await self._broadcast_to_room(room_id, {
-            "event": "new_message",
-            "data": message_data
-        })
-        
-        logger.info(f"Message in {room_id}: {user.username}: {message_text}")
+        await self._broadcast_to_room(room_id, message)
+        logger.info(f"Message in {room_id}: {username}: {message['content']}")
     
-    async def _leave_room(self, client_id: str, room_id: str):
-        user = self.users.get(client_id)
-        if not user:
-            return
-            
-        # Notify room about user leaving
-        user_list = await self._get_room_users(room_id)
-        user_list = [u for u in user_list if u != user.username]
-        
-        await self._broadcast_to_room(room_id, {
-            "event": "user_left",
-            "data": {
-                "username": user.username,
-                "message": f"{user.username} left the room",
-                "timestamp": datetime.now().isoformat(),
-                "users": user_list,
-                "room_id": room_id
-            }
-        })
-    
-    async def _get_room_users(self, room_id: str) -> List[str]:
-        users_in_room = []
-        for user in self.users.values():
-            if user.room_id == room_id:
-                users_in_room.append(user.username)
-        return list(set(users_in_room))  # Remove duplicates
-    
-    async def _broadcast_to_room(self, room_id: str, message: dict):
+    async def _broadcast_to_room(self, room_id: str, message: dict, exclude_client: str = None):
         disconnected_clients = []
         
-        for client_id, user in self.users.items():
-            if user.room_id == room_id and client_id in self.active_connections:
+        for client_id, websocket in self.active_connections.items():
+            if (self.user_rooms.get(client_id) == room_id and 
+                client_id != exclude_client):
                 try:
-                    await self.active_connections[client_id].send_json(message)
+                    # FIX: Add await
+                    await websocket.send_json(message)
                 except Exception as e:
                     logger.error(f"Error sending to client {client_id}: {e}")
                     disconnected_clients.append(client_id)
         
-        # Clean up disconnected clients
         for client_id in disconnected_clients:
             self.disconnect(client_id)
-    
-    async def _send_to_client(self, client_id: str, message: dict):
-        if client_id in self.active_connections:
-            try:
-                await self.active_connections[client_id].send_json(message)
-            except Exception as e:
-                logger.error(f"Error sending to client {client_id}: {e}")
-                self.disconnect(client_id)
+
+    async def get_room_stats(self):
+        # FIX: Use correct user counting logic
+        return {
+            room_id: {
+                "user_count": len([cid for cid, room in self.user_rooms.items() if room == room_id]),
+                "message_count": len(self.rooms.get(room_id, [])),
+                "active": room_id in self.rooms
+            }
+            for room_id in ROOMS
+        }
 
 # Global connection manager
 manager = ConnectionManager()
@@ -197,28 +158,20 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     
     try:
         while True:
-            # Receive and parse JSON message
             data = await websocket.receive_json()
-            event_type = data.get("event")
             
-            if event_type == "join_room":
-                room_id = data.get("room_id", "general")
-                username = data.get("username", f"User_{client_id}")
-                await manager.join_room(client_id, room_id, username)
-                
-            elif event_type == "send_message":
-                message = data.get("message", "").strip()
-                if message:  # Only send non-empty messages
-                    await manager.send_message(client_id, message)
-                    
-            elif event_type == "ping":
-                await websocket.send_json({"event": "pong"})
-                
+            if "roomId" in data and "username" in data:
+                await manager.handle_join_room(client_id, data)
+            elif "content" in data:
+                await manager.handle_send_message(client_id, data)
             else:
-                await websocket.send_json({
-                    "event": "error", 
-                    "data": {"message": f"Unknown event: {event_type}"}
-                })
+                error_msg = {
+                    "id": str(uuid.uuid4()),
+                    "username": "System", 
+                    "content": "Unknown message format",
+                    "timestamp": int(datetime.now().timestamp() * 1000)
+                }
+                await websocket.send_json(error_msg)
                 
     except WebSocketDisconnect:
         manager.disconnect(client_id)
@@ -226,38 +179,38 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         logger.error(f"WebSocket error for client {client_id}: {e}")
         manager.disconnect(client_id)
 
-# HTTP Routes for monitoring
+# HTTP Routes
 @app.get("/")
 async def root():
-    return {
-        "service": "Chat WebSocket Microservice",
-        "status": "running",
-        "version": "1.0.0"
-    }
+    return {"service": "Chat WebSocket", "status": "running"}
 
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
         "active_connections": len(manager.active_connections),
-        "active_rooms": len(manager.rooms),
-        "total_users": len(manager.users)
+        "active_rooms": len(manager.rooms)
     }
 
-@app.get("/stats")
-async def get_stats():
-    room_stats = {}
-    for room_id, room in manager.rooms.items():
-        room_stats[room_id] = {
-            "message_count": len(room.messages),
-            "user_count": len([u for u in manager.users.values() if u.room_id == room_id])
-        }
-    
+@app.get("/metrics")
+async def get_metrics():
     return {
+        "server_id": os.getenv("HOSTNAME", "backend-1"),
         "active_connections": len(manager.active_connections),
-        "active_rooms": len(manager.rooms),
-        "total_users": len(manager.users),
-        "room_stats": room_stats
+        "room_metrics": await manager.get_room_stats(),
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/rooms")
+async def list_rooms():
+    return {
+        "rooms": ROOMS,
+        "description": {
+            "general": "Main discussion room",
+            "python": "Python programming chat", 
+            "devops": "Cloud and containers discussion",
+            "random": "Off-topic conversations"
+        }
     }
 
 if __name__ == "__main__":
