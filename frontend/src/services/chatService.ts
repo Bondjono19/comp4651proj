@@ -68,10 +68,8 @@ export default class ChatService {
 
 	sendMessage(content: string) {
 		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-			// Send in the format your backend expects for chat messages
 			const chatMessage = {
 				content: content
-				// Don't include id, username, timestamp - backend will add them
 			};
 			this.ws.send(JSON.stringify(chatMessage));
 			console.log('Sent chat message:', chatMessage);
@@ -90,7 +88,6 @@ export default class ChatService {
 			this.ws.send(JSON.stringify(joinMessage));
 			console.log('Sent room join:', joinMessage);
 		} else {
-			// If websocket not ready, reconnect with new room
 			this.connect(username, roomId);
 		}
 	}
