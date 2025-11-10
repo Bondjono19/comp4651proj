@@ -25,9 +25,9 @@ export default function ChatRoom({ user = 'guest' }: { user?: string }) {
   }, [user]);
 
   const send = (text: string) => {
-    const m: Message = { id: Date.now().toString() + Math.random().toString(36).slice(2, 8), username: user, content: text, timestamp: Date.now() };
-    setMessages((s) => [...s, m]);
-    serviceRef.current?.sendMessage(m);
+    // ONLY send the text content to backend
+    serviceRef.current?.sendMessage(text);
+    // Remove the local message creation - backend will handle it
   };
 
   return (

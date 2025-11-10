@@ -129,7 +129,6 @@ class ConnectionManager:
             if (self.user_rooms.get(client_id) == room_id and 
                 client_id != exclude_client):
                 try:
-                    # FIX: Add await
                     await websocket.send_json(message)
                 except Exception as e:
                     logger.error(f"Error sending to client {client_id}: {e}")
@@ -139,7 +138,6 @@ class ConnectionManager:
             self.disconnect(client_id)
 
     async def get_room_stats(self):
-        # FIX: Use correct user counting logic
         return {
             room_id: {
                 "user_count": len([cid for cid, room in self.user_rooms.items() if room == room_id]),
