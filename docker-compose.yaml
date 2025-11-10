@@ -1,0 +1,23 @@
+services:
+  auth-service:
+    build: ./auth-service
+    networks:
+      - backend
+    depends_on:
+      - auth-service-db
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@auth-service-db:5432/db"
+      JWT_SECRET: "denmark"
+    ports:
+      - "5000:5000"
+  auth-service-db:
+    image: postgres:latest
+    networks:
+      - backend
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: db
+
+networks:
+  backend:
