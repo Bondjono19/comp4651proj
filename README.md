@@ -2,14 +2,6 @@
 
 This repository contains a simple chatroom microservice implemented as a containerized application and deployed using Kubernetes.
 
-# COMP4651 Chatroom Microservice as a Containerized Application
-
-This repository contains a simple chatroom microservice implemented as a containerized application and deployed using Kubernetes.
-
-# COMP4651 Chatroom Microservice
-
-A real-time multi-room chat application built with React frontend and Python FastAPI backend, designed as a containerized microservice.
-
 ##  Quick Start
 
 ### Setup
