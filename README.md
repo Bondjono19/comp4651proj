@@ -12,7 +12,7 @@ A real-time multi-room chat application built with React frontend and Python Fas
 
 ##  Quick Start
 
-### Backend Setup
+### Setup
 
 ```bash
 
@@ -29,11 +29,8 @@ pip install -r requirements.txt
 
 python main.py
 
-# Open new terminal and navigate to frontend directory
 cd frontend
 
-# Install dependencies
 npm install
 
-# Start the development server
 npm run dev
