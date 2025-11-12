@@ -9,7 +9,7 @@ Issues JWT via /login POST request
 |Method | Endpoint     | Description                  |
 |-------|--------------|------------------------------|
 | POST  | /login       | Authenticate user            |
-| PUST  | /generate_db | Generate testing users in db |
+| POST  | /generate_db | Generate testing users in db |
 
 ### /login
 Submit JSON in body like this  
