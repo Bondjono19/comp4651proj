@@ -61,4 +61,10 @@ class RedisManager:
     async def cache_recent_message(self, room_id: str, message: dict):
         if self.redis:
             await self.redis.lpush(F"room:{room_id}:recent_messages", json.dumps(message))
-            await self.redis.ltrim(F"room:{room_id}:recent_messages", 0, 49)  # Keep only the latest 50 messagesx
+            await self.redis.ltrim(F"room:{room_id}:recent_messages", 0, 49)  # Keep only the latest 50 messages
+
+    async def get_recent_messages(self, room_id: str) -> list:
+        if self.redis:
+            messages = await self.redis.lrange(F"room:{room_id}:recent_messages", 0, -1)
+            return [json.loads(msg) for msg in messages]
+        return []
