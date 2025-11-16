@@ -1,11 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ChatService from '../services/chatService';
 import type { Message } from '../types/message';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import '../styles/chatroom.css';
-
-const WS_URL = (import.meta.env.VITE_WS_URL as string) || 'ws://localhost:8000/ws/';
 
 // Available rooms
 const ROOMS = [
