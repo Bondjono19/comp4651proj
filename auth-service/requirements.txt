@@ -3,3 +3,4 @@ psycopg[binary]==3.2.12
 Flask-Bcrypt==1.0.1
 PyJWT==2.8.0
 python-dotenv==1.0.1
+Flask-CORS==4.0.0
