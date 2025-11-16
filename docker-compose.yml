@@ -1,4 +1,48 @@
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: chatroom-postgres
+    environment:
+      POSTGRES_DB: chatroom
+      POSTGRES_USER: chatuser
+      POSTGRES_PASSWORD: chatpass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - chatroom-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatuser -d chatroom"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: chatroom-auth
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://chatuser:chatpass@postgres:5432/chatroom
+      - JWT_SECRET=your-secret-key-change-in-production
+      - FLASK_APP=app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - chatroom-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -27,8 +71,11 @@ services:
       - "3000:80"
     environment:
       - VITE_BACKEND_URL=ws://localhost:8000
+      - VITE_AUTH_URL=http://localhost:5000
     depends_on:
       backend:
+        condition: service_healthy
+      auth-service:
         condition: service_healthy
     networks:
       - chatroom-network
@@ -43,3 +90,6 @@ services:
 networks:
   chatroom-network:
     driver: bridge
+
+volumes:
+  postgres-data:
