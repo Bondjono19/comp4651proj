@@ -16,6 +16,7 @@ const ROOMS = [
 export default function ChatRoom({ user = 'guest' }: { user?: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentRoom, setCurrentRoom] = useState('general');
+  const [isGuest] = useState(user.startsWith('guest'));
   const serviceRef = useRef<ChatService | null>(null);
 
   useEffect(() => {
@@ -51,7 +52,21 @@ export default function ChatRoom({ user = 'guest' }: { user?: string }) {
     <div className="chatroom">
       {/* Room Selection Header */}
       <div className="room-selector">
-        <h3>Current Room: {currentRoom}</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3>Room: {currentRoom}</h3>
+          {isGuest && (
+            <div style={{ 
+              fontSize: '0.85rem', 
+              color: '#888',
+              background: '#fff3cd',
+              padding: '4px 12px',
+              borderRadius: '4px',
+              border: '1px solid #ffc107'
+            }}>
+              👤 Guest Mode
+            </div>
+          )}
+        </div>
         <div className="room-buttons">
           {ROOMS.map(room => (
             <button
