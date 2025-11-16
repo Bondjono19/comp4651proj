@@ -2,22 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import ChatService from '../services/chatService';
 import type { Message } from '../types/message';
 
-const WS_URL = (import.meta.env.VITE_WS_URL as string) || 'ws://localhost:4000';
-
-export function useChat() {
-  const service = useMemo(() => new ChatService(WS_URL), []);
+export function useChat(username: string, roomId: string = 'general') {
+  const service = useMemo(() => new ChatService(), []);
   const [messages, setMessages] = useState<Message[]>([]);
 
   useEffect(() => {
-    service.connect();
+    service.connect(username, roomId);
     const unsub = service.onMessage((m) => setMessages((s) => [...s, m]));
     return () => {
       unsub();
       service.close();
     };
-  }, [service]);
+  }, [service, username, roomId]);
 
-  const send = (m: Message) => service.sendMessage(m);
+  const send = (content: string) => service.sendMessage(content);
 
   return { messages, send };
 }
