@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chatroom-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - HOSTNAME=backend-1
+    networks:
+      - chatroom-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chatroom-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_BACKEND_URL=ws://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - chatroom-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  chatroom-network:
+    driver: bridge
