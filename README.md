@@ -23,6 +23,10 @@ source venv/bin/activate
 
 pip install -r requirements.txt
 
+# add .env in backend folder
+MONGO_URL=...
+REDIS_URL=...
+
 python main.py
 
 # Open new terminal and navigate to frontend directory
