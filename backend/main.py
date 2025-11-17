@@ -1,17 +1,11 @@
-import asyncio
-import os  
+import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-import json
-import uuid
-from datetime import datetime
-from typing import Dict, List
-import logging
-from sqlalchemy.orm import Session
+from mongodb_manager import mongodb_manager
 from redis_manager import RedisManager
-from database import get_db, create_tables
-from datetime import datetime
-from typing import Dict, List
+import uuid
+from datetime import datetime, UTC
+from typing import Dict
 import logging
 import asyncio
 
@@ -28,12 +22,56 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ROOMS = ["general", "python", "devops", "random"]
+# Initialize managers
+redis_manager = RedisManager()
+
+@app.on_event("startup")
+async def startup_event():
+    # Connect to MongoDB Atlas
+    await mongodb_manager.connect()
+    
+    # Connect to Redis
+    await redis_manager.connect()
+    
+    # Ensure default rooms exist
+    await ensure_default_rooms()
+    
+    # Start Redis subscribers
+    asyncio.create_task(start_redis_subscribers())
+    
+    logger.info("✅ All services connected and ready!")
+
+async def ensure_default_rooms():
+    """Ensure default rooms exist in MongoDB"""
+    default_rooms = [
+        {"_id": "general", "name": "General Chat", "description": "Main discussion room"},
+        {"_id": "python", "name": "Python Programming", "description": "Python-related discussions"},
+        {"_id": "devops", "name": "DevOps & Cloud", "description": "Cloud infrastructure and DevOps"},
+        {"_id": "random", "name": "Random Discussions", "description": "Off-topic conversations"}
+    ]
+    
+    for room in default_rooms:
+        existing_room = await mongodb_manager.get_room(room["_id"])
+        if not existing_room:
+            await mongodb_manager.db.rooms.insert_one(room)
+            logger.info(f"✅ Created room: {room['name']}")
+
+async def start_redis_subscribers():
+    rooms = ["general", "python", "devops", "random"]
+    for room in rooms:
+        asyncio.create_task(
+            redis_manager.subscribe_to_room(room, handle_redis_message)
+        )
+        print(f"🔄 Started Redis subscriber for: {room}")
+
+async def handle_redis_message(message: dict):
+    room_id = message.get("room_id")
+    if room_id:
+        await manager._broadcast_to_room(room_id, message)
 
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
-        self.rooms: Dict[str, List[dict]] = {}
         self.user_rooms: Dict[str, str] = {}
         self.usernames: Dict[str, str] = {}
     
@@ -48,87 +86,135 @@ class ConnectionManager:
             username = self.usernames.get(client_id)
             
             if room_id and username:
+                # Notify others via Redis
                 leave_message = {
                     "id": str(uuid.uuid4()),
                     "username": "System",
                     "content": f"{username} left the chat",
-                    "timestamp": int(datetime.now().timestamp() * 1000)
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "room_id": room_id
                 }
-                # FIX: Add await
-                asyncio.create_task(self._broadcast_to_room(room_id, leave_message))
+                asyncio.create_task(redis_manager.publish_message(room_id, leave_message))
                 
-            # Clean up user data
+                # Remove from online users in Redis
+                asyncio.create_task(redis_manager.remove_online_user(room_id, username))
+            
+            # Clean up
             if client_id in self.user_rooms:
                 del self.user_rooms[client_id]
             if client_id in self.usernames:
                 del self.usernames[client_id]
+            if client_id in self.active_connections:
+                del self.active_connections[client_id]
             
-            del self.active_connections[client_id]
             logger.info(f"Client {client_id} disconnected")
     
     async def handle_join_room(self, client_id: str, data: dict):
         room_id = data.get("roomId", "general")
         username = data.get("username", f"User_{client_id}")
         
+        # Get or create user in MongoDB
+        user_id = await mongodb_manager.get_or_create_user(username)
+        
+        # Store user info
         self.user_rooms[client_id] = room_id
         self.usernames[client_id] = username
         
-        if room_id not in self.rooms:
-            self.rooms[room_id] = []
+        # Update online users in Redis
+        await redis_manager.add_online_user(room_id, username)
         
-        # Send welcome and history
+        # Get recent messages from Redis cache first
+        recent_messages = await redis_manager.get_recent_messages(room_id)
+        
+        # If Redis cache is empty, fallback to MongoDB
+        if not recent_messages:
+            recent_messages = await mongodb_manager.get_recent_messages(room_id, 50)
+            # Cache the messages in Redis for future requests
+            for message in recent_messages:
+                await redis_manager.cache_recent_message(room_id, message)
+        
+        # Send welcome and recent messages
         if client_id in self.active_connections:
             welcome_message = {
                 "id": str(uuid.uuid4()),
                 "username": "System",
                 "content": f"Welcome to room '{room_id}'",
-                "timestamp": int(datetime.now().timestamp() * 1000)
+                "timestamp": datetime.now(UTC).isoformat(),
+                "room_id": room_id
             }
             await self.active_connections[client_id].send_json(welcome_message)
             
-            # Send room history
-            for message in self.rooms[room_id][-50:]:
+            # Send recent messages
+            for message in recent_messages:
                 await self.active_connections[client_id].send_json(message)
         
-        # Notify others
+        # Get online users from Redis
+        online_users = await redis_manager.get_online_users(room_id)
+        
+        # Notify others via Redis
         join_message = {
             "id": str(uuid.uuid4()),
             "username": "System",
             "content": f"{username} joined the chat",
-            "timestamp": int(datetime.now().timestamp() * 1000)
+            "timestamp": datetime.now(UTC).isoformat(),
+            "room_id": room_id,
+            "online_users": list(online_users)
         }
-        await self._broadcast_to_room(room_id, join_message, exclude_client=client_id)
+        await redis_manager.publish_message(room_id, join_message)
         
         logger.info(f"User {username} joined room {room_id}")
-    
+        
     async def handle_send_message(self, client_id: str, data: dict):
         room_id = self.user_rooms.get(client_id)
         username = self.usernames.get(client_id)
+        
+        print(f"🔍 DEBUG handle_send_message: client_id={client_id}, username={username}, room_id={room_id}")
+        print(f"🔍 DEBUG Message content: {data.get('content')}")
         
         if not room_id or not username:
             error_message = {
                 "id": str(uuid.uuid4()),
                 "username": "System",
                 "content": "Please join a room first",
-                "timestamp": int(datetime.now().timestamp() * 1000)
+                "timestamp": datetime.now(UTC).isoformat(), 
             }
             if client_id in self.active_connections:
                 await self.active_connections[client_id].send_json(error_message)
             return
         
-        message = {
+        message_data = {
             "id": str(uuid.uuid4()),
             "username": username,
             "content": data.get("content", ""),
-            "timestamp": int(datetime.now().timestamp() * 1000)
+            "timestamp": datetime.now(UTC).isoformat(), 
+            "room_id": room_id
         }
         
-        self.rooms[room_id].append(message)
-        self.rooms[room_id] = self.rooms[room_id][-100:]
+        print(f"🔍 DEBUG Message data: {message_data}")
         
-        await self._broadcast_to_room(room_id, message)
-        logger.info(f"Message in {room_id}: {username}: {message['content']}")
-    
+        # Cache in Redis first 
+        try:
+            await redis_manager.cache_recent_message(room_id, message_data)
+            print(f"✅ DEBUG Cached in Redis")
+        except Exception as e:
+            print(f"❌ DEBUG Redis cache failed: {e}")
+        
+        #Publish to Redis pub/sub for real-time delivery
+        try:
+            await redis_manager.publish_message(room_id, message_data)
+            print(f"✅ DEBUG Published to Redis pub/sub")
+        except Exception as e:
+            print(f"❌ DEBUG Redis publish failed: {e}")
+        
+        #Store in MongoDB async 
+        try:
+            asyncio.create_task(mongodb_manager.save_message(message_data))
+            print(f"✅ DEBUG Async MongoDB save initiated")
+        except Exception as e:
+            print(f"❌ DEBUG MongoDB save failed: {e}")
+        
+        logger.info(f"Message in {room_id}: {username}: {message_data['content']}")
+
     async def _broadcast_to_room(self, room_id: str, message: dict, exclude_client: str = None):
         disconnected_clients = []
         
@@ -143,22 +229,22 @@ class ConnectionManager:
         
         for client_id in disconnected_clients:
             self.disconnect(client_id)
-
-    async def get_room_stats(self):
-        return {
-            room_id: {
-                "user_count": len([cid for cid, room in self.user_rooms.items() if room == room_id]),
-                "message_count": len(self.rooms.get(room_id, [])),
-                "active": room_id in self.rooms
-            }
-            for room_id in ROOMS
+    
+    async def _send_error(self, client_id: str, message: str):
+        error_msg = {
+            "id": str(uuid.uuid4()),
+            "username": "System",
+            "content": message,
+            "timestamp": datetime.now(UTC).isoformat()
         }
+        if client_id in self.active_connections:
+            await self.active_connections[client_id].send_json(error_msg)
 
 # Global connection manager
 manager = ConnectionManager()
 
 @app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str, db: Session = Depends(get_db)):
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await manager.connect(websocket, client_id)
     
     try:
@@ -166,173 +252,54 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, db: Session =
             data = await websocket.receive_json()
             
             if "roomId" in data and "username" in data:
-                await manager.handle_join_room(client_id, data, db)
+                await manager.handle_join_room(client_id, data)
             elif "content" in data:
-                await manager.handle_send_message(client_id, data, db)
+                await manager.handle_send_message(client_id, data)
             else:
                 await manager._send_error(client_id, "Unknown message format")
                 
     except WebSocketDisconnect:
         manager.disconnect(client_id)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error for client {client_id}: {e}")
         manager.disconnect(client_id)
 
 # HTTP Routes
 @app.get("/")
 async def root():
-    return {"service": "Chat WebSocket", "status": "running"}
+    return {"service": "Chat WebSocket", "status": "running", "database": "MongoDB Atlas"}
 
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
         "active_connections": len(manager.active_connections),
-        "active_rooms": len(manager.rooms)
+        "database": "MongoDB Atlas"
     }
 
 @app.get("/metrics")
 async def get_metrics():
+    rooms = ["general", "python", "devops", "random"]
+    room_metrics = {}
+    
+    for room in rooms:
+        stats = await mongodb_manager.get_room_stats(room)
+        room_metrics[room] = stats
+    
     return {
         "server_id": os.getenv("HOSTNAME", "backend-1"),
         "active_connections": len(manager.active_connections),
-        "room_metrics": await manager.get_room_stats(),
-        "timestamp": datetime.now().isoformat()
+        "room_metrics": room_metrics,
+        "timestamp": datetime.now(UTC).isoformat()
     }
 
 @app.get("/rooms")
 async def list_rooms():
+    rooms = await mongodb_manager.get_all_rooms()
     return {
-        "rooms": ROOMS,
-        "description": {
-            "general": "Main discussion room",
-            "python": "Python programming chat", 
-            "devops": "Cloud and containers discussion",
-            "random": "Off-topic conversations"
-        }
+        "rooms": rooms,
+        "database": "MongoDB Atlas"
     }
-
-# Initialize Redis
-redis_manager = RedisManager()
-
-@app.on_event("startup")
-async def startup_event():
-    await redis_manager.connect()
-    create_tables()  # Create database tables
-    # Start Redis subscribers for each room
-    asyncio.create_task(start_redis_subscribers())
-
-async def start_redis_subscribers():
-    rooms = ["general", "python", "devops", "random"]
-    for room in rooms:
-        asyncio.create_task(redis_manager.subscribe_to_room(room, handle_redis_message))
-
-async def handle_redis_message(message: dict):
-    # Broadcast messages from Redis to WebSocket clients
-    room_id = message.get("room_id")
-    if room_id:
-        await manager._broadcast_to_room(room_id, message)
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-        # Remove in-memory storage - use Redis and PostgreSQL instead
-    
-    async def handle_send_message(self, client_id: str, data: dict, db: Session):
-        user_id = self.user_ids.get(client_id)
-        room_id = self.user_rooms.get(client_id)
-        username = self.usernames.get(client_id)
-        
-        if not all([user_id, room_id, username]):
-            await self._send_error(client_id, "Please join a room first")
-            return
-        
-        # Create message
-        message_data = {
-            "id": str(uuid.uuid4()),
-            "username": username,
-            "content": data.get("content", ""),
-            "timestamp": datetime.utcnow().isoformat(),
-            "room_id": room_id
-        }
-        
-        # Store in PostgreSQL (persistent)
-        from database import Message
-        db_message = Message(
-            id=uuid.UUID(message_data["id"]),
-            room_id=room_id,
-            user_id=user_id,
-            username=username,
-            content=message_data["content"],
-            timestamp=datetime.utcnow()
-        )
-        db.add(db_message)
-        db.commit()
-        
-        # Cache in Redis (performance)
-        await redis_manager.cache_recent_message(room_id, message_data)
-        
-        # Publish to Redis for cross-instance broadcasting
-        await redis_manager.publish_message(room_id, message_data)
-        
-        logger.info(f"Message in {room_id}: {username}: {message_data['content']}")
-    
-    async def handle_join_room(self, client_id: str, data: dict, db: Session):
-        room_id = data.get("roomId", "general")
-        username = data.get("username", f"User_{client_id}")
-        
-        # Create or get user
-        from database import User
-        user = db.query(User).filter(User.username == username).first()
-        if not user:
-            user = User(username=username)
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-        
-        # Store user info
-        self.user_ids[client_id] = str(user.id)
-        self.user_rooms[client_id] = room_id
-        self.usernames[client_id] = username
-        
-        # Update online users in Redis
-        await redis_manager.add_online_user(room_id, username)
-        
-        # Get recent messages from Redis cache
-        recent_messages = await redis_manager.get_recent_messages(room_id)
-        
-        # Send welcome and recent messages
-        if client_id in self.active_connections:
-            welcome_message = {
-                "id": str(uuid.uuid4()),
-                "username": "System",
-                "content": f"Welcome to room '{room_id}'",
-                "timestamp": datetime.utcnow().isoformat(),
-                "room_id": room_id
-            }
-            await self.active_connections[client_id].send_json(welcome_message)
-            
-            # Send recent messages from cache
-            for message in recent_messages:
-                await self.active_connections[client_id].send_json(message)
-        
-        # Get online users from Redis
-        online_users = await redis_manager.get_online_users(room_id)
-        
-        # Notify others
-        join_message = {
-            "id": str(uuid.uuid4()),
-            "username": "System",
-            "content": f"{username} joined the chat",
-            "timestamp": datetime.utcnow().isoformat(),
-            "room_id": room_id,
-            "online_users": list(online_users)
-        }
-        
-        # Publish join notification via Redis
-        await redis_manager.publish_message(room_id, join_message)
-        
-        logger.info(f"User {username} joined room {room_id}")
 
 if __name__ == "__main__":
     import uvicorn
