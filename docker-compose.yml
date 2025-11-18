@@ -19,6 +19,38 @@ services:
       retries: 5
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: chatroom-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - chatroom-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    container_name: chatroom-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: chatroom
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - chatroom-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   auth-service:
     build:
       context: ./auth-service
@@ -52,6 +84,13 @@ services:
       - "8000:8000"
     environment:
       - HOSTNAME=backend-1
+      - REDIS_URL=redis://redis:6379
+      - MONGO_URL=mongodb://mongodb:27017/chatroom
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
     networks:
       - chatroom-network
     healthcheck:
@@ -93,3 +132,4 @@ networks:
 
 volumes:
   postgres-data:
+  mongodb-data:
