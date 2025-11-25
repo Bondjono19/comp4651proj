@@ -17,6 +17,8 @@ spec:
       containers:
         - image: ghcr.io/bondjono19/auth-service:latest
           name: auth
+          ports:
+            - containerPort: 5000
           env:
             - name: DATABASE_URL 
               value: "postgresql://postgres:postgres@postgres-service:5432/db"
