@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: chat
+  name: chat
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: chat
+  template:
+    metadata:
+      labels:
+        run: chat
+    spec:
+      containers:
+        - image: ghcr.io/bondjono19/chat-service:latest
+          name: chat
+          env:
+            - name: HOSTNAME 
+              value: backend-1
+            - name: REDIS_URL
+              value: redis://service-redis:6379
+            - name: MONGO_URL
+              value: mongodb://service-mongo:27017/chatroom

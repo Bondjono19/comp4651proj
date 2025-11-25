@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: mongo
+  template:
+    metadata:
+      labels:
+        run: mongo
+    spec:
+      containers:
+        - image: mongo:7
+          name: mongo
+          env:
+            - name: MONGO_INITDB_DATABASE
+              value: chatroom
