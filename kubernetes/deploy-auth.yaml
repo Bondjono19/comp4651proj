@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: auth
+  name: auth
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      run: auth
+  template:
+    metadata:
+      labels:
+        run: auth
+    spec:
+      containers:
+        - image: ghcr.io/bondjono19/auth-service:latest
+          name: auth
+          env:
+            - name: DATABASE_URL 
+              value: "postgresql://postgres:postgres@postgres-service:5432/db"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: asecret
+                  key: JWT_SECRET
