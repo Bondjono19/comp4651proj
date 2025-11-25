@@ -20,4 +20,12 @@ jobs:
         run: cd auth-service && docker build -t ghcr.io/bondjono19/auth-service:latest .
       - name: push
         run: docker push ghcr.io/bondjono19/auth-service:latest
+      - name: build docker image chat service
+        run: cd backend && docker build -t ghcr.io/bondjono19/chat-service:latest .
+      - name: push
+        run: docker push ghcr.io/bondjono19/chat-service:latest
+      - name: build docker image frontend service
+        run: cd frontend && docker build -t ghcr.io/bondjono19/frontend-service:latest .
+      - name: push
+        run: docker push ghcr.io/bondjono19/frontend-service:latest
     

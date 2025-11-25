@@ -1,0 +1,67 @@
+.chatroom {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0; /* allow children to scroll correctly in flex containers */
+}
+
+.room-selector {
+  background: #1a1a1a;
+  padding: 15px 20px;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.room-selector h3 {
+  margin: 0 0 12px 0;
+  color: #ffffff;
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
+.room-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.room-buttons button {
+  padding: 8px 16px;
+  border: 1px solid #404040;
+  background: #262626;
+  color: #b0b0b0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.room-buttons button:hover {
+  background: #333;
+  border-color: #555;
+  color: #ffffff;
+}
+
+.room-buttons button.active {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0a0a0a;
+  font-weight: 600;
+}
+
+/* Message List Area */
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  background: #0a0a0a;
+  padding: 20px;
+}
+
+/* Message Input Area */
+.message-input {
+  background: #1a1a1a;
+  padding: 20px;
+  border-top: 1px solid #333;
+  flex-shrink: 0;
+}
