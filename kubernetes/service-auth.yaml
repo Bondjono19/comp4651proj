@@ -11,4 +11,4 @@ spec:
     targetPort: 5000
   selector:
     run: auth
-  type: LoadBalancer
+  type: ClusterIP
