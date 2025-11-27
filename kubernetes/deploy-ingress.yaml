@@ -3,15 +3,22 @@ kind: Ingress
 metadata:
   name: main-ingress
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/websocket-services: "service-chat"
 spec:
   ingressClassName: nginx
   rules:
     - http:
         paths:
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: service-chat
+                port:
+                  number: 8000
           - path: /login
             pathType: Prefix
             backend:

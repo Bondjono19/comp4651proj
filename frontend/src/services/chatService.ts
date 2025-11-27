@@ -13,9 +13,11 @@ export default class ChatService {
 
 	constructor() {
 		this.clientId = this.generateClientId();
-		// Use environment variable or fallback to current hostname
-		const backendUrl = import.meta.env.VITE_BACKEND_URL || `ws://${window.location.hostname}:8000`;
+		// Use environment variable or construct from current location
+		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+		const backendUrl = import.meta.env.VITE_WS_URL || `${protocol}//${window.location.host}`;
 		this.url = `${backendUrl}/ws/${this.clientId}`;
+		console.log('VITE_WS_URL=', import.meta.env.VITE_WS_URL);
 	}
 
 	private generateClientId(): string {
