@@ -1,4 +1,4 @@
-const AUTH_URL = import.meta.env.VITE_AUTH_URL || 'http://localhost:5000';
+const AUTH_URL = import.meta.env.VITE_AUTH_URL || '';
 
 export interface AuthResponse {
   access_token: string;

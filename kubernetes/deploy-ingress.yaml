@@ -19,7 +19,21 @@ spec:
                 name: service-chat
                 port:
                   number: 8000
+          - path: /register
+            pathType: Prefix
+            backend:
+              service:
+                name: service-auth
+                port:
+                  number: 5000
           - path: /login
+            pathType: Prefix
+            backend:
+              service:
+                name: service-auth
+                port:
+                  number: 5000
+          - path: /verify
             pathType: Prefix
             backend:
               service:
