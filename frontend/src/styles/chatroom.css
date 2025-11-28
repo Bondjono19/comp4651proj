@@ -1,8 +1,9 @@
 .chatroom {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0; /* allow children to scroll correctly in flex containers */
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 .room-selector {
@@ -10,6 +11,9 @@
   padding: 15px 20px;
   border-bottom: 1px solid #333;
   flex-shrink: 0;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .room-selector h3 {
@@ -54,14 +58,53 @@
 .messages-container {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   background: #0a0a0a;
   padding: 20px;
+  box-sizing: border-box;
+  width: 100%;
 }
 
-/* Message Input Area */
+/* Message Input Area - now handled by message-input.css as fixed */
 .message-input {
-  background: #1a1a1a;
-  padding: 20px;
-  border-top: 1px solid #333;
-  flex-shrink: 0;
+  display: none; /* This wrapper is not needed with fixed input */
+}
+
+@media (prefers-color-scheme: light) {
+  .room-selector {
+    background: #f8f8f8;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  .room-selector h3 {
+    color: #213547;
+  }
+  
+  .room-buttons button {
+    background: #ffffff;
+    border: 1px solid #d0d0d0;
+    color: #555;
+  }
+  
+  .room-buttons button:hover {
+    background: #f0f0f0;
+    border-color: #b0b0b0;
+    color: #213547;
+  }
+  
+  .room-buttons button.active {
+    background: #646cff;
+    border-color: #646cff;
+    color: #ffffff;
+    font-weight: 600;
+  }
+  
+  .messages-container {
+    background: #ffffff;
+  }
+  
+  .message-input {
+    background: #f8f8f8;
+    border-top: 1px solid #e0e0e0;
+  }
 }
