@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Chat WebSocket Microservice")
 
+POD_NAME = os.getenv("POD_NAME","unknown")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -87,7 +89,7 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, client_id: str):
         await websocket.accept()
         self.active_connections[client_id] = websocket
-        logger.info(f"Client {client_id} connected")
+        logger.info(f"Client {client_id} connected on Pod: {POD_NAME}")
     
     def disconnect(self, client_id: str):
         if client_id in self.active_connections:

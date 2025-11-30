@@ -24,3 +24,12 @@ spec:
               value: redis://service-redis:6379
             - name: MONGO_URL
               value: mongodb://service-mongo:27017/chatroom
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: asecret
+                  key: JWT_SECRET
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
