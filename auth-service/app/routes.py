@@ -3,16 +3,21 @@ from app.database import get_database
 from flask_bcrypt import Bcrypt
 from app.utils import generate_jwt
 import re
+import os
+
+POD_NAME = os.getenv("POD_NAME","unknown")
 
 def register_routes(app):
 
     @app.route("/")
     def home():
-        return jsonify({"service": "auth-service", "status": "running"})
+        print(f"User connected to endpoint: '/loadbalancetest' in Pod:{POD_NAME}")
+        return jsonify({"service": "auth-service", "status": "running","pod_instance":POD_NAME})
     
     @app.route('/health')
     def health():
-        return jsonify({"status": "healthy"})
+        print(f"User connected to endpoint: '/health' in Pod:{POD_NAME}")
+        return jsonify({"service": "auth-service", "status": "running","health":"healthy","pod_instance":POD_NAME})
 
     @app.route('/register', methods=['POST'])
     def register():
