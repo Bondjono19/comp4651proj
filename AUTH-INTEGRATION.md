@@ -1,103 +1,269 @@
-# Authentication Integration Complete! 🎉
+# Authentication System Documentation
 
-## ✅ What Was Implemented
+This document describes the authentication architecture and implementation of the chatroom application.
 
-### Backend Services
-1. **Auth Service** - Flask-based authentication microservice
-   - User registration with validation (3-20 chars, alphanumeric + underscore)
-   - Password strength checking (min 6 chars, weak password detection)
+## 🏗️ Architecture Overview
+
+The authentication system is implemented as a separate microservice using Flask, with PostgreSQL for user data storage. It integrates seamlessly with the chat backend and frontend, supporting both authenticated users and guest mode.
+
+### Components
+
+1. **Auth Service** (Flask microservice)
+   - User registration and login
    - JWT token generation and verification
-   - Login/logout functionality
+   - Password hashing with bcrypt
+   - Input validation and sanitization
    - PostgreSQL database integration
 
-2. **PostgreSQL Database** - User data storage
-   - Users table with hashed passwords (bcrypt)
-   - Sample users pre-loaded for testing
+2. **PostgreSQL Database**
+   - User credentials storage
+   - Bcrypt password hashing
+   - Unique username constraints
+   - Sample user data for testing
 
-### Frontend Features
-1. **Guest Mode** - Immediate chat access
-   - Auto-generated guest usernames (guest1234, guest5678, etc.)
-   - Guest username persists across page reloads
-   - Visual indicators (yellow dot, guest badge)
-   - Banner encouraging registration
+3. **Frontend Integration** (React)
+   - Guest mode with auto-generated usernames
+   - Login/Register modal UI
+   - JWT token management via localStorage
+   - Automatic token verification on load
+   - Seamless guest-to-user transition
 
-2. **Authentication UI**
-   - Beautiful login/register form
-   - Toggle between login and register modes
-   - Real-time validation and error messages
-   - "Continue as Guest" option
-   - Seamless transition from guest to authenticated
+4. **Chat Backend Integration** (FastAPI)
+   - No direct auth logic
+   - Accepts any username from client
+   - Frontend handles authentication state
+   - Token validation done by auth service
 
-3. **User Management**
-   - JWT-based session management
-   - Auto-login after registration
-   - Token verification on page load
-   - Persistent sessions via localStorage
-   - Clean logout flow
+## 🚀 Deployment Options
 
-### Docker Integration
-- All services containerized and orchestrated
-- PostgreSQL with persistent volume
-- Health checks for all services
-- Proper networking between containers
-- Environment variable configuration
+### Docker Compose (Local Development)
 
-## 🚀 Services Running
-
+All services run locally:
 - **Frontend**: http://localhost:3000
-- **Backend (Chat)**: http://localhost:8000
+- **Chat Backend**: http://localhost:8000
 - **Auth Service**: http://localhost:5000
 - **PostgreSQL**: localhost:5432
 
-## 👤 Sample Users
+```bash
+# Start all services
+docker compose up -d
 
-After running `/generate_db`, you can login with:
-- Username: `alice` / Password: `pass123`
-- Username: `bob` / Password: `qwerty123`
-- Username: `charlie` / Password: `hello123`
-- Username: `dave` / Password: `abc123def`
-- Username: `emma` / Password: `secret123`
+# Initialize sample users
+curl http://localhost:5000/generate_db
+```
 
-## 🎮 User Experience
+### Kubernetes (Production)
 
-### First-Time Visitor
-1. Opens app → instantly assigned guest username (e.g., `guest4523`)
-2. Can chat immediately in any room
-3. Sees friendly banner: "You're browsing as a guest. Login or Register to save your username!"
-4. Guest badge shown in chatroom header
+Services deployed to cluster with:
+- NGINX Ingress Controller for routing
+- PersistentVolume for PostgreSQL data
+- Internal service-to-service communication
+- Single external endpoint via Ingress
 
-### Guest Registering
-1. Clicks "Login / Register" button in header
-2. Can toggle between login/register forms
-3. Fills in desired username and password
-4. Validation happens in real-time:
-   - Username must be 3-20 characters, alphanumeric + underscore
-   - Password must be at least 6 characters
-   - Weak passwords are rejected
-   - Duplicate usernames prevented
-5. Can click "Continue as Guest" to go back
-6. After registration → instantly logged in with new username
-7. Guest badge removed, green dot appears
+```bash
+# Deploy to Kubernetes
+kubectl apply -f kubernetes/
 
-### Authenticated User
-1. Username shown with green dot indicator
-2. "Logout" button available
-3. Token persists across page reloads
-4. No guest banner shown
-5. Can logout to become guest again
+# Access via Ingress URL
+kubectl get ingress main-ingress
+```
 
-### Returning User
-1. Token auto-verified on page load
-2. If valid → instantly logged in
-3. If expired/invalid → becomes guest with previous guest username
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed Kubernetes setup.
 
-## 🔒 Security Features
+## 🔐 API Endpoints
 
-- **Password Hashing**: bcrypt with salt
-- **JWT Tokens**: 1-hour expiration
-- **Input Validation**: Server-side validation prevents malicious input
-- **Weak Password Detection**: Common passwords rejected
-- **Username Uniqueness**: Duplicate prevention at database level
+### POST `/register`
+Register a new user account.
+
+**Request Body**:
+```json
+{
+  "username": "alice",
+  "password": "pass123"
+}
+```
+
+**Validations**:
+- Username: 3-20 characters, alphanumeric + underscore only
+- Password: minimum 6 characters
+- Weak passwords rejected (password, 123456, etc.)
+- Username uniqueness enforced
+
+**Response** (Success - 201):
+```json
+{
+  "message": "User registered successfully",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "username": "alice"
+}
+```
+
+**Response** (Error - 400):
+```json
+{
+  "error": "Username already exists"
+}
+```
+
+### POST `/login`
+Authenticate an existing user.
+
+**Request Body**:
+```json
+{
+  "username": "alice",
+  "password": "pass123"
+}
+```
+
+**Response** (Success - 200):
+```json
+{
+  "message": "Login successful",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "username": "alice"
+}
+```
+
+**Response** (Error - 401):
+```json
+{
+  "error": "Invalid username or password"
+}
+```
+
+### POST `/verify`
+Verify a JWT token.
+
+**Request Body**:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Response** (Valid - 200):
+```json
+{
+  "valid": true,
+  "username": "alice"
+}
+```
+
+**Response** (Invalid - 401):
+```json
+{
+  "valid": false,
+  "error": "Token has expired"
+}
+```
+
+### GET `/generate_db`
+Initialize database with sample users (development only).
+
+**Response** (200):
+```json
+{
+  "message": "Database initialized successfully",
+  "users_created": 5
+}
+```
+
+**Sample Users Created**:
+- `alice` / `pass123`
+- `bob` / `qwerty123`
+- `charlie` / `hello123`
+- `dave` / `abc123def`
+- `emma` / `secret123`
+
+### GET `/health`
+Health check endpoint.
+
+**Response** (200):
+```json
+{
+  "service": "auth-service",
+  "status": "running",
+  "health": "healthy"
+}
+```
+
+## 🎮 User Experience Flow
+
+### First-Time Visitor (Guest Mode)
+1. App loads → automatically assigned random guest username (e.g., `guest4523`)
+2. Can chat immediately in any room without registration
+3. Sees banner: "You're browsing as a guest. Login or Register to save your username!"
+4. Guest badge (yellow dot) shown next to username
+5. Guest username persists in localStorage across page reloads
+
+### Registering from Guest Mode
+1. User clicks "Login / Register" button in header
+2. Modal opens with login/register tabs
+3. User switches to "Register" tab
+4. Enters desired username and password
+5. Real-time validation shows errors immediately
+6. Clicks "Register" button
+7. → Backend validates and creates account
+8. → Frontend receives JWT token
+9. → Token saved to localStorage
+10. → Username updated from guest to registered username
+11. → Guest badge removed, green dot appears
+12. → User continues chatting with new username
+13. → Banner disappears
+
+### Logging In
+1. User clicks "Login / Register" button
+2. Modal opens on "Login" tab by default
+3. Enters username and password
+4. Clicks "Login" button
+5. → Backend validates credentials
+6. → Frontend receives JWT token
+7. → Token saved to localStorage
+8. → Green dot indicator appears
+9. → User is authenticated
+
+### Returning User (Auto-Login)
+1. User visits site with token in localStorage
+2. Frontend automatically calls `/verify` endpoint
+3. If token valid → user logged in automatically
+4. If token expired → user becomes guest with stored guest username
+5. No re-login required for valid tokens
+
+### Logging Out
+1. User clicks "Logout" button
+2. Token removed from localStorage
+3. Username changes back to stored guest username
+4. Green dot changes to yellow (guest indicator)
+5. Guest banner reappears
+6. Can continue chatting as guest
+
+## 🔒 Security Implementation
+
+### Password Security
+- **Hashing**: bcrypt with automatic salt generation
+- **Strength**: Minimum 6 characters required
+- **Weak Password Detection**: Rejects common passwords (password, 123456, qwerty, etc.)
+- **No Plain Text**: Passwords never stored or logged in plain text
+
+### JWT Token Security
+- **Algorithm**: HS256 (HMAC with SHA-256)
+- **Expiration**: 1 hour from generation
+- **Secret**: Configurable via `JWT_SECRET` environment variable
+- **Claims**: Contains username and expiration time
+- **Verification**: Signature and expiration checked on every `/verify` call
+
+### Input Validation
+- **Username**: Regex validation (`^[a-zA-Z0-9_]{3,20}$`)
+- **SQL Injection**: PostgreSQL parameterized queries
+- **XSS Protection**: Input sanitization on backend
+- **CSRF**: Not applicable (API-only, no cookies)
+
+### Database Security
+- **Unique Constraints**: Username uniqueness enforced at DB level
+- **Connection String**: Configurable via environment variable
+- **Credentials**: Stored in Kubernetes secrets or environment variables
+- **Prepared Statements**: All queries use parameterized statements
 - **CORS Configuration**: Proper origin restrictions
 
 ## 📊 Architecture
@@ -181,51 +347,216 @@ Response: `{ "access_token": "...", "username": "..." }`
 Response: `{ "valid": true, "user_id": 1, "username": "..." }`
 
 **GET /health**
-Response: `{ "status": "healthy" }`
+## 🎨 Frontend Implementation
 
-**GET /generate_db**
-Initializes database with sample users
+### UI Components
 
-## 🎨 UI Features
+**AuthForm Component** (`src/components/AuthForm.tsx`)
+- Login/Register toggle tabs
+- Real-time form validation
+- Error message display
+- Loading states during API calls
+- "Continue as Guest" option
 
-- **Gradient Auth Form**: Beautiful purple gradient background
-- **User Status Indicators**: 
-  - 🟢 Green dot for authenticated users
-  - 🟡 Yellow dot for guests
-- **Guest Banner**: Informative banner with call-to-action
-- **Responsive Design**: Works on all screen sizes
-- **Loading States**: Shows loading indicator during auth check
-- **Error Messages**: Clear, user-friendly error messages
-- **Form Validation**: Real-time validation feedback
+**User Presence Indicators**
+- 🟢 **Green dot**: Authenticated user
+- 🟡 **Yellow dot**: Guest user
+- Shown next to username in chat header
 
-## 🔄 State Management
+**Guest Banner**
+- Informative message for guest users
+- Call-to-action to register
+- Automatically hidden for authenticated users
 
-- **localStorage**: Stores auth token, username, and guest username
-- **React State**: Manages authentication status and UI state
-- **Session Persistence**: Users stay logged in across page reloads
-- **Auto Token Verification**: Validates token on app load
+### State Management
 
-## 🚢 Deployment Ready
+**localStorage Keys**:
+- `authToken`: JWT token for authenticated users
+- `username`: Current username (guest or authenticated)
+- `guestUsername`: Persisted guest username
 
-All services are configured for easy deployment to:
-- AWS ECS/EKS
-- Docker Swarm
-- Kubernetes
-- Any container orchestration platform
+**React State**:
+- `isAuthenticated`: Boolean authentication status
+- `username`: Current display name
+- `isLoading`: Loading state during API calls
 
-Just update environment variables for production URLs!
+**Token Lifecycle**:
+1. On app load → Check localStorage for token
+2. If token exists → Verify with `/verify` endpoint
+3. If valid → Set authenticated state
+4. If invalid/expired → Clear token, use guest mode
+5. On logout → Clear token, revert to guest username
 
-## 🎯 Next Steps (Optional Enhancements)
+### API Service (`src/services/authService.ts`)
 
-- Add password reset functionality
-- Implement email verification
-- Add user profiles with avatars
-- Create admin panel
-- Add rate limiting for auth endpoints
-- Implement refresh tokens for longer sessions
-- Add OAuth providers (Google, GitHub, etc.)
-- Create user settings page
-- Add message history tied to user accounts
-- Implement private messaging
+```typescript
+// Register new user
+authService.register(username, password)
+  .then(({ token, username }) => {
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('username', username);
+  });
 
-Enjoy your fully-featured authenticated chatroom! 🎉
+// Login existing user
+authService.login(username, password)
+  .then(({ token, username }) => {
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('username', username);
+  });
+
+// Verify token
+authService.verifyToken(token)
+  .then(({ valid, username }) => {
+    if (valid) {
+      setIsAuthenticated(true);
+    }
+  });
+```
+
+## 🐳 Docker Configuration
+
+### Environment Variables
+
+**Auth Service**:
+```yaml
+environment:
+  - DATABASE_URL=postgresql://chatuser:chatpass@postgres:5432/chatroom
+  - JWT_SECRET=your-secret-key-change-in-production
+  - FLASK_APP=app
+```
+
+**Frontend** (build-time):
+```yaml
+environment:
+  - VITE_AUTH_URL=http://localhost:5000
+  - VITE_BACKEND_URL=ws://localhost:8000
+```
+
+### Health Checks
+
+All services include health checks:
+```yaml
+healthcheck:
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+```
+
+## ☸️ Kubernetes Configuration
+
+### Service Routing (Ingress)
+
+```yaml
+# Auth endpoints routed through Ingress
+- path: /register
+  backend: service-auth:5000
+- path: /login
+  backend: service-auth:5000
+- path: /verify
+  backend: service-auth:5000
+- path: /generate_db
+  backend: service-auth:5000
+```
+
+### Secrets
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+data:
+  postgres-password: <base64-encoded>
+  jwt-secret: <base64-encoded>
+```
+
+### Environment Variables
+
+```yaml
+env:
+  - name: DATABASE_URL
+    value: postgresql://chatuser:$(POSTGRES_PASSWORD)@service-db:5432/chatroom
+  - name: JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: jwt-secret
+```
+
+## 🧪 Testing
+
+### Manual Testing
+```bash
+# Register a new user
+curl -X POST http://localhost:5000/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","password":"test123"}'
+
+# Login
+curl -X POST http://localhost:5000/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","password":"test123"}'
+
+# Verify token
+curl -X POST http://localhost:5000/verify \
+  -H "Content-Type: application/json" \
+  -d '{"token":"<your-jwt-token>"}'
+
+# Initialize sample users
+curl http://localhost:5000/generate_db
+```
+
+### Expected Behaviors
+- ✅ Registration creates user and returns JWT
+- ✅ Login validates credentials and returns JWT
+- ✅ Duplicate usernames are rejected
+- ✅ Weak passwords are rejected
+- ✅ Invalid tokens fail verification
+- ✅ Expired tokens (>1 hour) fail verification
+- ✅ Guest mode works without authentication
+
+## 🔧 Production Recommendations
+
+### Security Enhancements
+- [ ] Use strong JWT secret (32+ characters, random)
+- [ ] Enable HTTPS/TLS for all endpoints
+- [ ] Implement rate limiting on auth endpoints
+- [ ] Add CAPTCHA for registration
+- [ ] Enable audit logging for authentication events
+- [ ] Implement account lockout after failed login attempts
+- [ ] Add email verification for new accounts
+- [ ] Implement refresh tokens for longer sessions
+
+### Database Enhancements
+- [ ] Use managed PostgreSQL (RDS, Cloud SQL)
+- [ ] Enable automated backups
+- [ ] Set up read replicas for scaling
+- [ ] Implement connection pooling
+- [ ] Add database indexes on username column
+
+### Monitoring
+- [ ] Log all authentication attempts
+- [ ] Monitor failed login rates
+- [ ] Track token verification failures
+- [ ] Alert on unusual authentication patterns
+- [ ] Monitor database query performance
+
+## 🎯 Optional Enhancements
+
+Future features to consider:
+- Password reset via email
+- OAuth providers (Google, GitHub, etc.)
+- Two-factor authentication (2FA)
+- User profile pages with avatars
+- Admin panel for user management
+- Password change functionality
+- Session management (view/revoke active sessions)
+- Private messaging between users
+- User-specific message history
+- Username change functionality
+
+---
+
+**For deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md)**  
+**For local development, see [QUICKSTART.md](QUICKSTART.md)**
