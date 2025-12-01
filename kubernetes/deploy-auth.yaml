@@ -25,3 +25,7 @@ spec:
                 secretKeyRef:
                   name: asecret
                   key: JWT_SECRET
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name

@@ -14,7 +14,7 @@ def register_routes(app):
         print(f"User connected to endpoint: '/loadbalancetest' in Pod:{POD_NAME}")
         return jsonify({"service": "auth-service", "status": "running","pod_instance":POD_NAME})
     
-    @app.route('/health', methods=['POST'])
+    @app.route('/health')
     def health():
         print(f"User connected to endpoint: '/health' in Pod:{POD_NAME}")
         return jsonify({"service": "auth-service", "status": "running","health":"healthy","pod_instance":POD_NAME})
